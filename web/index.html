@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DP Multimodal RAG Chat</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>DP Multimodal RAG Chat</h1>
+            <p class="subtitle">Try queries like "Tell me about the corgi videos" or "Show me agile content"</p>
+            <div id="stats" class="stats"></div>
+        </header>
+
+        <div id="chat" class="chat">
+            <div class="message assistant">
+                <div class="message-content">
+                    Hi! I can answer questions about your embedded documents, images, and videos. What would you like to know?
+                </div>
+            </div>
+        </div>
+
+        <form id="chat-form" class="input-area">
+            <input type="text" id="question" placeholder="Ask a question..." autocomplete="off" autofocus>
+            <button type="submit" id="send-btn">Send</button>
+        </form>
+    </div>
+
+    <script>
+        const chatEl = document.getElementById('chat');
+        const form = document.getElementById('chat-form');
+        const input = document.getElementById('question');
+        const sendBtn = document.getElementById('send-btn');
+        const statsEl = document.getElementById('stats');
+
+        // Load stats
+        fetch('/api/stats')
+            .then(r => r.json())
+            .then(data => {
+                statsEl.textContent = `${data.total_vectors} vectors in "${data.index_name}"`;
+            })
+            .catch(() => {
+                statsEl.textContent = 'Could not load index stats';
+            });
+
+        function addMessage(role, content, sources) {
+            const div = document.createElement('div');
+            div.className = `message ${role}`;
+
+            let html = `<div class="message-content">${formatMarkdown(content)}</div>`;
+
+            if (sources && sources.length > 0) {
+                // Separate media sources from text/doc sources
+                const mediaSources = sources.filter(s => s.media_url && (s.content_type === 'image' || s.content_type === 'video'));
+                const otherSources = sources.filter(s => !s.media_url || (s.content_type !== 'image' && s.content_type !== 'video'));
+
+                // Render inline media
+                if (mediaSources.length > 0) {
+                    html += '<div class="media-gallery">';
+                    for (const s of mediaSources) {
+                        html += '<div class="media-item">';
+                        if (s.content_type === 'image') {
+                            html += `<img src="${s.media_url}" alt="${escapeHtml(s.title)}" loading="lazy">`;
+                        } else if (s.content_type === 'video') {
+                            html += `<video controls preload="metadata"><source src="${s.media_url}"></video>`;
+                        }
+                        html += `<div class="media-label"><span class="badge badge-${s.content_type}">${s.content_type}</span> ${escapeHtml(s.title)} <span class="score">${s.score}</span></div>`;
+                        html += '</div>';
+                    }
+                    html += '</div>';
+                }
+
+                // Render remaining text/doc sources as a list
+                if (otherSources.length > 0) {
+                    html += '<div class="sources"><strong>Sources:</strong><ul>';
+                    for (const s of otherSources) {
+                        const badge = `<span class="badge badge-${s.content_type}">${s.content_type}</span>`;
+                        const pageInfo = s.page_range ? ` (pages ${s.page_range})` : '';
+                        html += `<li>${badge} ${escapeHtml(s.title)}${pageInfo} <span class="score">${s.score}</span></li>`;
+                    }
+                    html += '</ul></div>';
+                }
+            }
+
+            div.innerHTML = html;
+            chatEl.appendChild(div);
+            chatEl.scrollTop = chatEl.scrollHeight;
+        }
+
+        function addLoading() {
+            const div = document.createElement('div');
+            div.className = 'message assistant loading';
+            div.id = 'loading';
+            div.innerHTML = '<div class="message-content"><span class="dots">Thinking</span></div>';
+            chatEl.appendChild(div);
+            chatEl.scrollTop = chatEl.scrollHeight;
+        }
+
+        function removeLoading() {
+            const el = document.getElementById('loading');
+            if (el) el.remove();
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function formatMarkdown(text) {
+            // Basic markdown: bold, italic, code blocks, inline code, line breaks
+            return escapeHtml(text)
+                .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+                .replace(/`([^`]+)`/g, '<code>$1</code>')
+                .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+                .replace(/\n/g, '<br>');
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const question = input.value.trim();
+            if (!question) return;
+
+            addMessage('user', question);
+            input.value = '';
+            sendBtn.disabled = true;
+            addLoading();
+
+            try {
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question, top_k: 5 }),
+                });
+                const data = await res.json();
+                removeLoading();
+
+                if (data.error) {
+                    addMessage('assistant', `Error: ${data.error}`);
+                } else {
+                    addMessage('assistant', data.answer, data.sources);
+                }
+            } catch (err) {
+                removeLoading();
+                addMessage('assistant', `Error: ${err.message}`);
+            }
+
+            sendBtn.disabled = false;
+            input.focus();
+        });
+    </script>
+</body>
+</html>
