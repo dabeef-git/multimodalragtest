@@ -18,7 +18,10 @@ SYSTEM_PROMPT = (
     "You are a helpful assistant. Answer the user's question based on the provided context. "
     "If the context doesn't contain relevant information, say so honestly. "
     "Cite which sources you used by referencing their titles. "
-    "Keep answers clear and concise."
+    "Keep answers clear and concise. "
+    "Important: Images and videos from the context are automatically displayed inline below your response. "
+    "Do NOT say you cannot show or display media. Simply describe what the images or videos contain based on the context, "
+    "and the user will see them rendered below your answer."
 )
 
 
@@ -59,10 +62,14 @@ def chat():
         media_url = ""
         source_path = meta.get("source_path", "")
         if source_path and content_type in ("image", "video"):
-            # Convert absolute path to a relative URL via /media/
-            if source_path.startswith(ASSETS_DIR):
-                rel = os.path.relpath(source_path, ASSETS_DIR)
-                media_url = f"/media/{rel}"
+            # Extract the relative path after "assets/" regardless of machine
+            idx = source_path.find("/assets/")
+            if idx != -1:
+                rel = source_path[idx + len("/assets/"):]
+                # Verify the file actually exists in our local assets dir
+                local_path = os.path.join(ASSETS_DIR, rel)
+                if os.path.isfile(local_path):
+                    media_url = f"/media/{rel}"
 
         sources.append({
             "title": title,
