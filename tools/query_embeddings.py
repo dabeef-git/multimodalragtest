@@ -71,8 +71,11 @@ def _query_pinecone(vector, top_k, content_type_filter):
             "metadata": meta,
         })
 
-    with open(os.path.join(TMP_DIR, "last_query_results.json"), "w") as f:
-        json.dump({"matches": matches}, f, indent=2, default=str)
+    try:
+        with open(os.path.join(TMP_DIR, "last_query_results.json"), "w") as f:
+            json.dump({"matches": matches}, f, indent=2, default=str)
+    except OSError:
+        pass
 
     return matches
 

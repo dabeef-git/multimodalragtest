@@ -11,7 +11,10 @@ PINECONE_CLOUD = os.environ.get("PINECONE_CLOUD", "aws")
 PINECONE_REGION = os.environ.get("PINECONE_REGION", "us-east-1")
 TMP_DIR = os.path.join(BASE_DIR, ".tmp")
 
-os.makedirs(TMP_DIR, exist_ok=True)
+try:
+    os.makedirs(TMP_DIR, exist_ok=True)
+except OSError:
+    TMP_DIR = "/tmp"
 
 
 def get_gemini_client():
